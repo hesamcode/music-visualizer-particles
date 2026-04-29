@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>رقص نور تعاملی | آپلود موسیقی و کنترل هماهنگ</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+        }
+
+        body {
+            min-height: 100vh;
+            background: radial-gradient(circle at 30% 20%, #0a0f2a 0%, #020617 100%);
+            font-family: 'Segoe UI', 'Poppins', 'Tahoma', system-ui, sans-serif;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* کانواس ذرات */
+        canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: block;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        /* بخش پایین صفحه (کنترل‌ها و آپلود) */
+        .bottom-panel {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(10, 15, 35, 0.75);
+            backdrop-filter: blur(16px);
+            border-top: 1px solid rgba(255, 200, 100, 0.4);
+            padding: 18px 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+            flex-wrap: wrap;
+            z-index: 30;
+            box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.4);
+            transition: all 0.2s ease;
+        }
+
+        /* استایل دکمه‌ها */
+        button, .file-label {
+            background: linear-gradient(135deg, #ffb347, #ff7e05);
+            border: none;
+            padding: 10px 24px;
+            border-radius: 60px;
+            font-size: 1rem;
+            font-weight: bold;
+            color: #1e122b;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            transition: transform 0.2s, box-shadow 0.2s;
+            font-family: inherit;
+            letter-spacing: 0.5px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        button:hover, .file-label:hover {
+            transform: scale(1.02);
+            box-shadow: 0 6px 18px rgba(255, 140, 30, 0.5);
+            background: linear-gradient(135deg, #ffc267, #ff9519);
+        }
+
+        button:active, .file-label:active {
+            transform: scale(0.98);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .file-label {
+            background: linear-gradient(135deg, #5f4b8b, #3c2a5f);
+            color: #ffecb3;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        }
+
+        .file-label:hover {
+            background: linear-gradient(135deg, #7b5ea7, #543c7a);
+        }
+
+        #uploadInput {
+            display: none;
+        }
+
+        .status-text {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(12px);
+            padding: 6px 20px;
+            border-radius: 40px;
+            color: #ffefb9;
+            font-size: 0.85rem;
+            font-weight: 500;
+            z-index: 20;
+            font-family: monospace;
+            white-space: nowrap;
+            pointer-events: none;
+            border: 1px solid #ffb34788;
+            box-shadow: 0 0 12px rgba(0,0,0,0.3);
+        }
+
+        .error-message {
+            position: fixed;
+            bottom: 30%;
+            left: 10%;
+            right: 10%;
+            background: #e34d4cee;
+            backdrop-filter: blur(16px);
+            padding: 16px;
+            border-radius: 28px;
+            text-align: center;
+            color: white;
+            z-index: 40;
+            font-weight: bold;
+            border-right: 5px solid #ffaa66;
+            font-size: 0.9rem;
+            display: none;
+        }
+
+        @media (max-width: 650px) {
+            .bottom-panel { gap: 12px; padding: 12px 16px; }
+            button, .file-label { padding: 7px 18px; font-size: 0.8rem; }
+            .status-text { font-size: 0.7rem; white-space: nowrap; top: 12px; }
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="particleCanvas"></canvas>
+    
+    <div class="status-text" id="statusMsg">✨ رقص نور طبیعی | لطفاً فایل موسیقی را آپلود کنید ✨</div>
+    <div id="errorToast" class="error-message"></div>
+
+    <div class="bottom-panel" id="bottomPanel">
+        <!-- بخش آپلود (نمایش پیش فرض) -->
+        <div id="uploadSection">
+            <label for="uploadInput" class="file-label">📁 انتخاب فایل موسیقی (mp3)</label>
+            <input type="file" id="uploadInput" accept="audio/mpeg,audio/mp3,audio/*">
+        </div>
+
+        <!-- دکمه شروع (در ابتدا مخفی) -->
+        <button id="startBtn" class="hidden">🎵 شروع رقص نور</button>
+
+        <!-- گروه دکمه‌های کنترل در حین پخش -->
+        <div id="controlGroup" class="hidden">
+            <button id="pauseBtn">⏸️ توقف</button>
+            <button id="resumeBtn" class="hidden">▶️ ادامه</button>
+            <button id="changeMusicBtn">🎼 تغییر موسیقی</button>
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            // ----- عناصر DOM -----
+            const canvas = document.getElementById('particleCanvas');
+            const ctx = canvas.getContext('2d');
+            const statusDiv = document.getElementById('statusMsg');
+            const errorDiv = document.getElementById('errorToast');
+            const uploadSection = document.getElementById('uploadSection');
+            const startBtn = document.getElementById('startBtn');
+            const controlGroup = document.getElementById('controlGroup');
+            const pauseBtn = document.getElementById('pauseBtn');
+            const resumeBtn = document.getElementById('resumeBtn');
+            const changeMusicBtn = document.getElementById('changeMusicBtn');
+            const fileInput = document.getElementById('uploadInput');
+
+            // ----- متغیرهای صوتی و آنالیز -----
+            let audioContext = null;          // Web Audio API
+            let audioElement = null;           // HTMLAudioElement
+            let sourceNode = null;              // MediaElementSourceNode
+            let analyser = null;                // AnalyserNode برای فرکانس
+            let isPlaying = false;              // وضعیت پخش واقعی
+            let isPausedManually = false;       // توقف دستی توسط کاربر (برای دکمه ادامه)
+            let animationId = null;
+            let musicLoaded = false;             // فایل موسیقی آپلود شده؟
+            let currentAudioURL = null;          // برای revoke object URL
+
+            // ----- پارامترهای ذرات و انرژی ریتم -----
+            let particles = [];
+            const PARTICLE_COUNT = 210;
+            let width = window.innerWidth;
+            let height = window.innerHeight;
+
+            // داده‌های فرکانس
+            let frequencyData = null;
+            let smoothEnergy = 0.3;            // انرژی موسیقی نرمال شده (0..1)
+            let beatIntensity = 0;
+
+            // کلاس ذره با حرکت طبیعی + واکنش به ریتم
+            class DynamicParticle {
+                constructor(x, y, vx, vy, baseSize, hue) {
+                    this.x = x;
+                    this.y = y;
+                    this.vx = vx;
+                    this.vy = vy;
+                    this.baseSize = baseSize;
+                    this.size = baseSize;
+                    this.hue = hue;          // طیف طلایی تا آبی-نارنجی
+                    this.sat = 70 + Math.random() * 25;
+                    this.alpha = 0.6 + Math.random() * 0.4;
+                    this.phase = Math.random() * Math.PI * 2;
+                    // ضریب حساسیت به ریتم (برای تنوع)
+                    this.rhythmFactor = 0.5 + Math.random() * 0.9;
+                }
+
+                // به روزرسانی با انرژی موسیقی و ضرب لحظه‌ای (beat)
+                update(energy, beat) {
+                    // انرژی و ضرب بر حرکت و اندازه تاثیر می‌گذارند
+                    let influence = energy * 0.9 + beat * 1.1;
+                    influence = Math.min(1.4, influence);
+                    
+                    // حرکت بر اساس سرعت و اغتشاش طبیعی + هماهنگ با انرژی
+                    // ایجاد حرکت ارگانیک شبیه رقص نور
+                    this.vx += (Math.sin(Date.now() * 0.003 + this.phase) * 0.04 + (Math.random() - 0.5) * 0.06) * (0.5 + influence * 0.8);
+                    this.vy += (Math.cos(Date.now() * 0.0027 + this.hue) * 0.04 + (Math.random() - 0.5) * 0.06) * (0.5 + influence * 0.8);
+                    
+                    // محدود کردن سرعت
+                    let maxSpd = 1.8 + energy * 1.5;
+                    if (this.vx > maxSpd) this.vx = maxSpd;
+                    if (this.vx < -maxSpd) this.vx = -maxSpd;
+                    if (this.vy > maxSpd) this.vy = maxSpd;
+                    if (this.vy < -maxSpd) this.vy = -maxSpd;
+                    
+                    // اعمال جابجایی
+                    this.x += this.vx * (0.7 + energy * 1.3);
+                    this.y += this.vy * (0.7 + energy * 1.3);
+                    
+                    // بازگشت مرزی (حلقه ملایم)
+                    if (this.x < -80) this.x = width + 80;
+                    if (this.x > width + 80) this.x = -80;
+                    if (this.y < -80) this.y = height + 80;
+                    if (this.y > height + 80) this.y = -80;
+                    
+                    // تغییر سایز با شدت ریتم (چشمگیر)
+                    let targetSize = this.baseSize * (0.6 + energy * 1.1 + beat * 1.0);
+                    targetSize = Math.min(this.baseSize * 2.6, targetSize);
+                    this.size = this.size * 0.85 + targetSize * 0.15;
+                    
+                    // تغییر رنگ: با افزایش انرژی، رنگ گرم‌تر و چرخش
+                    if (energy > 0.3 || beat > 0.2) {
+                        this.hue += (energy * 12 + beat * 18);
+                        if (this.hue > 360) this.hue -= 360;
+                        this.sat = Math.min(96, this.sat + beat * 12);
+                    } else {
+                        this.sat = this.sat * 0.98 + 70 * 0.02;
+                    }
+                    
+                    // شفافیت
+                    let targetAlpha = 0.5 + energy * 0.7 + beat * 0.6;
+                    this.alpha = this.alpha * 0.92 + targetAlpha * 0.08;
+                }
+
+                draw(ctx) {
+                    ctx.save();
+                    ctx.shadowBlur = this.size * 1.0;
+                    ctx.shadowColor = `hsla(${this.hue}, 90%, 65%, ${this.alpha * 0.9})`;
+                    const grad = ctx.createRadialGradient(this.x, this.y, 2, this.x, this.y, this.size * 0.85);
+                    grad.addColorStop(0, `hsla(${this.hue}, ${this.sat}%, 72%, ${this.alpha})`);
+                    grad.addColorStop(1, `hsla(${this.hue}, ${this.sat - 15}%, 55%, ${this.alpha * 0.5})`);
+                    ctx.fillStyle = grad;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.size * 0.7, 0, Math.PI * 2);
+                    ctx.fill();
+                    // هسته درخشان
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.size * 0.32, 0, Math.PI * 2);
+                    ctx.fillStyle = `hsla(${this.hue}, 100%, 80%, ${this.alpha * 0.9})`;
+                    ctx.fill();
+                    ctx.restore();
+                }
+            }
+
+            // ---------- ساخت ذرات اولیه (رقص طبیعی) ----------
+            function initParticles() {
+                particles = [];
+                for (let i = 0; i < PARTICLE_COUNT; i++) {
+                    const x = Math.random() * width;
+                    const y = Math.random() * height;
+                    const vx = (Math.random() - 0.5) * 0.9;
+                    const vy = (Math.random() - 0.5) * 0.9;
+                    const size = 5 + Math.random() * 12;
+                    const hue = 25 + Math.random() * 70;   // طیف نارنجی تا صورتی و طلایی
+                    particles.push(new DynamicParticle(x, y, vx, vy, size, hue));
+                }
+            }
+
+            // ---------- محاسبه انرژی از آنالایزر (ریتم) ----------
+            function updateEnergyFromMusic() {
+                if (!isPlaying || isPausedManually || !analyser || !frequencyData) {
+                    // حالت بدون موسیقی یا در حال توقف: انرژی کم و طبیعی (حرکت آرام ذرات)
+                    let idle = 0.18 + Math.sin(Date.now() * 0.002) * 0.07;
+                    smoothEnergy = smoothEnergy * 0.97 + idle * 0.03;
+                    beatIntensity = beatIntensity * 0.92;
+                    return { energy: smoothEnergy, beat: beatIntensity };
+                }
+                
+                analyser.getByteFrequencyData(frequencyData);
+                let sum = 0;
+                const startBand = 2;
+                const endBand = Math.min(70, frequencyData.length);
+                for (let i = startBand; i < endBand; i++) {
+                    sum += frequencyData[i];
+                }
+                let avg = sum / (endBand - startBand);
+                let rawEnergy = avg / 190;
+                rawEnergy = Math.min(1.0, Math.max(0.0, rawEnergy));
+                let energy = Math.pow(rawEnergy, 1.1);
+                
+                // تشخیص ضرب ساده (افزایش ناگهانی)
+                let beat = 0;
+                if (energy > smoothEnergy + 0.11 && energy > 0.4) {
+                    beat = Math.min(0.9, energy * 0.9);
+                    beatIntensity = Math.min(1.0, beatIntensity + beat * 0.5);
+                } else {
+                    beatIntensity = beatIntensity * 0.86;
+                }
+                if (beatIntensity < 0.02) beatIntensity = 0;
+                
+                // اسموت انرژی
+                smoothEnergy = smoothEnergy * 0.85 + energy * 0.15;
+                let finalEnergy = Math.min(1.0, smoothEnergy + beatIntensity * 0.45);
+                return { energy: finalEnergy, beat: beatIntensity };
+            }
+
+            // ---------- حلقه انیمیشن (رقص نور همیشگی) ----------
+            function animateParticles() {
+                if (!ctx) return;
+                
+                // گرفتن انرژی از موسیقی (اگر در حال پخش باشد)
+                const rhythm = updateEnergyFromMusic();
+                const musicPower = rhythm.energy;
+                const beat = rhythm.beat;
+                
+                // نمایش وضعیت در بخش بالایی
+                if (musicLoaded && isPlaying && !isPausedManually) {
+                    let percent = Math.floor(musicPower * 100);
+                    statusDiv.innerHTML = `🎶 هماهنگ با ریتم | شدت نور: ${percent}% ${beat > 0.25 ? '💥' : '✨'}`;
+                } else if (musicLoaded && isPausedManually) {
+                    statusDiv.innerHTML = `⏸️ موسیقی متوقف | ذرات در حرکت آرام طبیعی`;
+                } else if (musicLoaded && !isPlaying && !isPausedManually) {
+                    statusDiv.innerHTML = `🎵 موسیقی آماده | دکمه شروع را بزن`;
+                } else {
+                    statusDiv.innerHTML = `✨ رقص نور طبیعی | لطفاً فایل موسیقی را آپلود کنید ✨`;
+                }
+                
+                // به روزرسانی همه ذرات با قدرت موسیقی (حتی در حالت استندبای، انرژی ضعیف طبیعی است)
+                for (let p of particles) {
+                    p.update(musicPower, beat);
+                }
+                
+                // رندر پس زمینه شفاف
+                ctx.clearRect(0, 0, width, height);
+                ctx.fillStyle = 'rgba(2, 5, 18, 0.2)';
+                ctx.fillRect(0, 0, width, height);
+                
+                // رسم ذرات
+                for (let p of particles) {
+                    p.draw(ctx);
+                }
+                
+                // افکت فلش ضرب قوی
+                if (beat > 0.45 && isPlaying && !isPausedManually) {
+                    ctx.save();
+                    ctx.globalCompositeOperation = 'lighter';
+                    ctx.fillStyle = `rgba(255, 180, 70, ${beat * 0.25})`;
+                    ctx.fillRect(0, 0, width, height);
+                    ctx.restore();
+                }
+                
+                animationId = requestAnimationFrame(animateParticles);
+            }
+
+            // ---------- راه‌اندازی سیستم صوتی با فایل آپلود شده ----------
+            async function loadAndPlayMusic(file) {
+                // توقف و پاک کردن منبع قبلی
+                stopAndCleanAudio();
+                
+                // ساخت آدرس ObjectURL
+                if (currentAudioURL) {
+                    URL.revokeObjectURL(currentAudioURL);
+                    currentAudioURL = null;
+                }
+                const url = URL.createObjectURL(file);
+                currentAudioURL = url;
+                
+                // ساخت المنت صوتی
+                const newAudio = new Audio();
+                newAudio.src = url;
+                newAudio.loop = false;
+                newAudio.preload = 'auto';
+                
+                // بارگذاری
+                await new Promise((resolve, reject) => {
+                    newAudio.addEventListener('canplaythrough', resolve, { once: true });
+                    newAudio.addEventListener('error', () => reject(new Error('فایل صوتی نامعتبر یا خراب')), { once: true });
+                    newAudio.load();
+                    setTimeout(() => reject(new Error('زمان بارگذاری بیش از حد')), 8000);
+                });
+                
+                audioElement = newAudio;
+                
+                // ساخت AudioContext
+                if (!audioContext) {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                if (audioContext.state === 'suspended') {
+                    await audioContext.resume();
+                }
+                
+                // اتصال MediaElementSource
+                sourceNode = audioContext.createMediaElementSource(audioElement);
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                const bufferLength = analyser.frequencyBinCount;
+                frequencyData = new Uint8Array(bufferLength);
+                
+                sourceNode.connect(analyser);
+                analyser.connect(audioContext.destination);
+                
+                // رویداد پایان آهنگ
+                audioElement.onended = () => {
+                    if (isPlaying && !isPausedManually) {
+                        // موسیقی تمام شد
+                        isPlaying = false;
+                        musicLoaded = true; // فایل هنوز هست ولی پخش نیست
+                        isPausedManually = false;
+                        updateControlButtonsForState();
+                        statusDiv.innerHTML = `🎵 آهنگ پایان یافت | برای پخش مجدد دکمه شروع را بزن`;
+                        // نمایش دکمه شروع مجدد
+                        showStartButtonAfterUpload();
+                    }
+                };
+                
+                // ذخیره وضعیت
+                musicLoaded = true;
+                isPlaying = false;    // هنوز شروع نشده
+                isPausedManually = false;
+                
+                // آماده نمایش دکمه شروع
+                showStartButtonAfterUpload();
+                
+                // مخفی کردن بخش آپلود و نمایش دکمه شروع
+                uploadSection.classList.add('hidden');
+                startBtn.classList.remove('hidden');
+                controlGroup.classList.add('hidden');
+                
+                return true;
+            }
+            
+            function showStartButtonAfterUpload() {
+                uploadSection.classList.add('hidden');
+                startBtn.classList.remove('hidden');
+                controlGroup.classList.add('hidden');
+                pauseBtn.classList.remove('hidden');
+                resumeBtn.classList.add('hidden');
+                changeMusicBtn.classList.remove('hidden');
+            }
+            
+            // توقف و پاکسازی اتصالات صوتی
+            function stopAndCleanAudio() {
+                if (audioElement) {
+                    audioElement.pause();
+                    audioElement.onended = null;
+                    if (sourceNode) {
+                        try { sourceNode.disconnect(); } catch(e) {}
+                    }
+                    sourceNode = null;
+                    audioElement = null;
+                }
+                if (analyser) {
+                    try { analyser.disconnect(); } catch(e) {}
+                    analyser = null;
+                }
+                frequencyData = null;
+                isPlaying = false;
+                isPausedManually = false;
+            }
+            
+            // شروع پخش موسیقی (دکمه شروع)
+            async function startMusicPlayback() {
+                if (!audioElement || !audioContext) {
+                    showError("فایل موسیقی بارگذاری نشده است.");
+                    return;
+                }
+                if (isPlaying && !isPausedManually) return;
+                
+                // اگر در حالت توقف دستی هستیم، از همان نقطه ادامه بده
+                if (isPausedManually && audioElement) {
+                    await audioContext.resume();
+                    await audioElement.play();
+                    isPlaying = true;
+                    isPausedManually = false;
+                    updateControlButtonsForState();
+                    return;
+                }
+                
+                // حالت عادی: بازنشانی و پخش
+                if (audioContext.state === 'suspended') await audioContext.resume();
+                await audioElement.play();
+                isPlaying = true;
+                isPausedManually = false;
+                updateControlButtonsForState();
+            }
+            
+            // توقف موقت (Pause)
+            function pauseMusic() {
+                if (!isPlaying || isPausedManually) return;
+                if (audioElement) {
+                    audioElement.pause();
+                    isPlaying = false;
+                    isPausedManually = true;
+                    updateControlButtonsForState();
+                }
+            }
+            
+            // ادامه بعد از توقف
+            async function resumeMusic() {
+                if (!isPausedManually || !audioElement) return;
+                if (audioContext && audioContext.state === 'suspended') await audioContext.resume();
+                await audioElement.play();
+                isPlaying = true;
+                isPausedManually = false;
+                updateControlButtonsForState();
+            }
+            
+            // تغییر موسیقی: برگشت به حالت آپلود
+            function changeMusic() {
+                // توقف پخش فعلی و پاکسازی
+                stopAndCleanAudio();
+                if (currentAudioURL) {
+                    URL.revokeObjectURL(currentAudioURL);
+                    currentAudioURL = null;
+                }
+                musicLoaded = false;
+                isPlaying = false;
+                isPausedManually = false;
+                
+                // نمایش بخش آپلود، مخفی کردن سایر دکمه‌ها
+                uploadSection.classList.remove('hidden');
+                startBtn.classList.add('hidden');
+                controlGroup.classList.add('hidden');
+                // ریست status
+                statusDiv.innerHTML = `✨ رقص نور طبیعی | لطفاً فایل جدید آپلود کنید ✨`;
+                // ریست فرکانس و آنالایزر
+                if (analyser) analyser = null;
+                frequencyData = null;
+                smoothEnergy = 0.25;
+            }
+            
+            // به روزرسانی نمایش دکمه‌های کنترل (توقف/ادامه)
+            function updateControlButtonsForState() {
+                if (!musicLoaded) return;
+                if (isPlaying && !isPausedManually) {
+                    // در حال پخش: نمایش توقف و تغییر موسیقی
+                    pauseBtn.classList.remove('hidden');
+                    resumeBtn.classList.add('hidden');
+                    changeMusicBtn.classList.remove('hidden');
+                    startBtn.classList.add('hidden');
+                    controlGroup.classList.remove('hidden');
+                } 
+                else if (isPausedManually) {
+                    // در حالت توقف: نمایش ادامه + تغییر موسیقی
+                    pauseBtn.classList.add('hidden');
+                    resumeBtn.classList.remove('hidden');
+                    changeMusicBtn.classList.remove('hidden');
+                    controlGroup.classList.remove('hidden');
+                    startBtn.classList.add('hidden');
+                }
+                else {
+                    // هیچ پخشی در کار نیست (پایان یا هنوز شروع نشده)
+                    if (musicLoaded && audioElement && !isPlaying && !isPausedManually) {
+                        // نمایش دکمه شروع مجدد
+                        startBtn.classList.remove('hidden');
+                        controlGroup.classList.add('hidden');
+                        uploadSection.classList.add('hidden');
+                    } else if (!musicLoaded) {
+                        uploadSection.classList.remove('hidden');
+                        startBtn.classList.add('hidden');
+                        controlGroup.classList.add('hidden');
+                    }
+                }
+            }
+            
+            // نمایش خطا
+            function showError(msg) {
+                errorDiv.innerText = `⚠️ ${msg}`;
+                errorDiv.style.display = 'block';
+                setTimeout(() => { errorDiv.style.display = 'none'; }, 5000);
+            }
+            
+            // ----- رویدادهای ورودی -----
+            fileInput.addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                if (!file.type.includes('audio')) {
+                    showError('لطفاً فایل صوتی معتبر (MP3 یا audio) انتخاب کنید');
+                    return;
+                }
+                try {
+                    await loadAndPlayMusic(file);
+                } catch (err) {
+                    showError(`خطا در بارگذاری: ${err.message}`);
+                    console.error(err);
+                    // بازنشانی به حالت آپلود
+                    uploadSection.classList.remove('hidden');
+                    startBtn.classList.add('hidden');
+                    controlGroup.classList.add('hidden');
+                }
+            });
+            
+            startBtn.addEventListener('click', () => {
+                startMusicPlayback().catch(err => {
+                    showError(`خطا در شروع پخش: ${err.message}`);
+                });
+            });
+            
+            pauseBtn.addEventListener('click', () => {
+                pauseMusic();
+            });
+            
+            resumeBtn.addEventListener('click', () => {
+                resumeMusic().catch(err => showError(`خطا در ادامه: ${err.message}`));
+            });
+            
+            changeMusicBtn.addEventListener('click', () => {
+                changeMusic();
+                // پاک کردن فایل انتخاب شده
+                fileInput.value = '';
+            });
+            
+            // ----- مدیریت سایز و ریسپانسیو ------
+            function resizeCanvasAndParticles() {
+                width = window.innerWidth;
+                height = window.innerHeight;
+                canvas.width = width;
+                canvas.height = height;
+                if (particles.length > 0) {
+                    for (let p of particles) {
+                        if (p.x > width) p.x = width - 30;
+                        if (p.y > height) p.y = height - 30;
+                        if (p.x < 0) p.x = 30;
+                        if (p.y < 0) p.y = 30;
+                    }
+                } else {
+                    initParticles();
+                }
+            }
+            
+            window.addEventListener('resize', resizeCanvasAndParticles);
+            
+            // ----- مقداردهی اولیه و شروع انیمیشن ابدی رقص نور ------
+            function initialize() {
+                resizeCanvasAndParticles();
+                initParticles();
+                animateParticles();
+                // پیش‌زمینه آماده است
+            }
+            
+            initialize();
+            
+            // resume AudioContext در صورت نیاز (کلیک روی صفحه)
+            window.addEventListener('click', () => {
+                if (audioContext && audioContext.state === 'suspended') {
+                    audioContext.resume().catch(e=>{});
+                }
+            });
+        })();
+    </script>
+</body>
+</html>
